@@ -35,9 +35,18 @@ func (c *Client) readPump() {
 			break
 		}
 
+		if msg.Type == "switch_channel" {
+			// Handle channel switching
+			c.hub.SwitchChannel(c, msg.ChannelID)
+			continue
+		}
+		
 		msg.Username = c.username
 		msg.UserID = c.userID
 		msg.Timestamp = time.Now().UTC().Format("2006-01-02T15:04:05Z")
+		
+		// Use client's current channel
+		msg.ChannelID = c.channelID
 		
 		data, _ := json.Marshal(msg)
 		c.hub.broadcast <- data
