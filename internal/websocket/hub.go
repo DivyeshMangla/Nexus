@@ -2,6 +2,7 @@ package websocket
 
 import (
 	"log"
+	"net/http"
 	"github.com/gorilla/websocket"
 )
 
@@ -18,6 +19,19 @@ type Client struct {
 	send     chan []byte
 	userID   int
 	username string
+}
+
+type Message struct {
+	Type     string `json:"type"`
+	Content  string `json:"content"`
+	Username string `json:"username"`
+	UserID   int    `json:"user_id"`
+}
+
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool {
+		return true
+	},
 }
 
 func NewHub() *Hub {
