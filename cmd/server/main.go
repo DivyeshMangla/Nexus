@@ -51,9 +51,7 @@ func main() {
 		c.HTML(http.StatusOK, "index.html", nil)
 	})
 	
-	r.GET("/ws", func(c *gin.Context) {
-		c.String(200, "WebSocket endpoint - needs implementation")
-	})
+	r.GET("/ws", hub.HandleWebSocket(cfg.JWTSecret))
 	
 	log.Printf("Server starting on port %s", cfg.Port)
 	log.Fatal(http.ListenAndServe(":"+cfg.Port, r))
