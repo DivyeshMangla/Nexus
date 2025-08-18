@@ -1,11 +1,9 @@
 package websocket
 
 import (
-	"context"
 	"encoding/json"
 	"log"
 	"net/http"
-	"time"
 	"github.com/gorilla/websocket"
 	"github.com/divyeshmangla/nexus/pkg/database"
 )
