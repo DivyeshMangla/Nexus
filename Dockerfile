@@ -12,7 +12,6 @@ RUN apk --no-cache add ca-certificates
 WORKDIR /root/
 
 COPY --from=builder /app/main .
-# Note: web/ directory is gitignored, so not included in Docker image
-# For production, web assets should be served separately or built differently
+COPY --from=builder /app/web ./web
 
 CMD ["./main"]
