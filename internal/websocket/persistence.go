@@ -24,7 +24,7 @@ func (h *Hub) sendRecentMessages(client *Client) {
 			Content:   msg.Content,
 			Username:  msg.Username,
 			UserID:    msg.UserID,
-			Timestamp: msg.CreatedAt.Format("15:04"),
+			Timestamp: msg.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
 		}
 		
 		data, _ := json.Marshal(wsMsg)
