@@ -37,6 +37,7 @@ func (c *Client) readPump() {
 
 		msg.Username = c.username
 		msg.UserID = c.userID
+		msg.Timestamp = time.Now().Format("15:04")
 		
 		data, _ := json.Marshal(msg)
 		c.hub.broadcast <- data

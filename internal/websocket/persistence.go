@@ -20,10 +20,11 @@ func (h *Hub) sendRecentMessages(client *Client) {
 
 	for _, msg := range messages {
 		wsMsg := Message{
-			Type:     "message",
-			Content:  msg.Content,
-			Username: msg.Username,
-			UserID:   msg.UserID,
+			Type:      "message",
+			Content:   msg.Content,
+			Username:  msg.Username,
+			UserID:    msg.UserID,
+			Timestamp: msg.CreatedAt.Format("15:04"),
 		}
 		
 		data, _ := json.Marshal(wsMsg)
