@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"github.com/gorilla/websocket"
+	"github.com/divyeshmangla/nexus/internal/models"
 	"github.com/divyeshmangla/nexus/pkg/database"
 )
 
@@ -50,9 +51,9 @@ func (h *Hub) Run() {
 	for {
 		select {
 		case client := <-h.register:
-			// Default to channel 1 (general)
+			// Default to general channel
 			if client.channelID == 0 {
-				client.channelID = 1
+				client.channelID = models.GeneralChannelID
 			}
 			
 			if h.channels[client.channelID] == nil {

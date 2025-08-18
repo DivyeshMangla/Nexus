@@ -192,6 +192,7 @@ func (db *DB) GetOrCreateDM(ctx context.Context, user1ID, user2ID int) (*models.
 	err = db.QueryRowContext(ctx, 
 		`INSERT INTO channels (name, type) VALUES ('dm', 'dm') RETURNING id, server_id, name, type, created_at`,
 	).Scan(&channel.ID, &channel.ServerID, &channel.Name, &channel.Type, &channel.CreatedAt)
+
 	
 	if err != nil {
 		return nil, err

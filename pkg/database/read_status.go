@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"time"
+	"github.com/divyeshmangla/nexus/internal/models"
 )
 
 func (db *DB) MarkChannelRead(ctx context.Context, userID, channelID int) error {
@@ -22,11 +23,11 @@ func (db *DB) GetUnreadChannels(ctx context.Context, userID int) ([]int, error) 
 		FROM messages m
 		LEFT JOIN channel_read_status crs ON crs.user_id = $1 AND crs.channel_id = m.channel_id
 		LEFT JOIN dm_participants dp ON dp.channel_id = m.channel_id AND dp.user_id = $1
-		WHERE (m.channel_id = 1 OR dp.user_id IS NOT NULL)
+		WHERE (m.channel_id = $2 OR dp.user_id IS NOT NULL)
 		AND (crs.last_read_at IS NULL OR m.created_at > crs.last_read_at)
 		AND m.user_id != $1`
 	
-	rows, err := db.QueryContext(ctx, query, userID)
+	rows, err := db.QueryContext(ctx, query, userID, models.GeneralChannelID)
 	if err != nil {
 		return nil, err
 	}

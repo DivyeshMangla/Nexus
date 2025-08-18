@@ -2,6 +2,12 @@ package models
 
 import "time"
 
+const (
+	ChannelTypeText = "text"
+	ChannelTypeDM   = "dm"
+	GeneralChannelID = 1
+)
+
 type Server struct {
 	ID        int       `json:"id" db:"id"`
 	Name      string    `json:"name" db:"name"`
