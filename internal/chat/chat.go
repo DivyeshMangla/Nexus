@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/divyeshmangla/nexus/internal/utils"
 	"github.com/divyeshmangla/nexus/pkg/database"
 )
 
@@ -21,7 +22,7 @@ func NewHandler(db database.Repository) *Handler {
 func (h *Handler) SearchUsers(c *gin.Context) {
 	query := c.Query("q")
 	if query == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Query parameter required"})
+		utils.ErrorResponse(c, http.StatusBadRequest, "Query parameter required")
 		return
 	}
 
@@ -30,11 +31,11 @@ func (h *Handler) SearchUsers(c *gin.Context) {
 
 	users, err := h.db.SearchUsers(ctx, query)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Search failed"})
+		utils.ErrorResponse(c, http.StatusInternalServerError, "Search failed")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"users": users})
+	utils.SuccessResponse(c, gin.H{"users": users})
 }
 
 func (h *Handler) CreateDM(c *gin.Context) {
