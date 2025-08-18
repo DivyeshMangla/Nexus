@@ -39,7 +39,7 @@ go.sum
 ehthumbs.db
 Thumbs.db
 
-# Frontend (temporary)
+# Frontend
 web/
 
 # Environment variables
