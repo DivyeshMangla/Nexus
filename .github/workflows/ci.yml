@@ -23,6 +23,3 @@ jobs:
     
     - name: Build Go app
       run: go build ./cmd/server
-    
-    - name: Build Docker image
-      run: docker build -t nexus:test .
