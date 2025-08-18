@@ -9,7 +9,7 @@ import (
 )
 
 type Hub struct {
-	clients    map[*Client]bool
+	channels   map[int]map[*Client]bool // channelID -> clients
 	broadcast  chan []byte
 	register   chan *Client
 	unregister chan *Client
@@ -17,11 +17,12 @@ type Hub struct {
 }
 
 type Client struct {
-	hub      *Hub
-	conn     *websocket.Conn
-	send     chan []byte
-	userID   int
-	username string
+	hub       *Hub
+	conn      *websocket.Conn
+	send      chan []byte
+	userID    int
+	username  string
+	channelID int
 }
 
 
@@ -37,7 +38,7 @@ var upgrader = websocket.Upgrader{
 
 func NewHub(db database.Repository) *Hub {
 	return &Hub{
-		clients:    make(map[*Client]bool),
+		channels:   make(map[int]map[*Client]bool),
 		broadcast:  make(chan []byte),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
@@ -49,17 +50,32 @@ func (h *Hub) Run() {
 	for {
 		select {
 		case client := <-h.register:
-			h.clients[client] = true
-			log.Printf("Client connected: %s", client.username)
+			// Default to channel 1 (general)
+			if client.channelID == 0 {
+				client.channelID = 1
+			}
+			
+			if h.channels[client.channelID] == nil {
+				h.channels[client.channelID] = make(map[*Client]bool)
+			}
+			h.channels[client.channelID][client] = true
+			log.Printf("Client %s joined channel %d", client.username, client.channelID)
 			
 			// Send recent messages to new client
 			go h.sendRecentMessages(client)
 
 		case client := <-h.unregister:
-			if _, ok := h.clients[client]; ok {
-				delete(h.clients, client)
-				close(client.send)
-				log.Printf("Client disconnected: %s", client.username)
+			if clients, ok := h.channels[client.channelID]; ok {
+				if _, exists := clients[client]; exists {
+					delete(clients, client)
+					close(client.send)
+					log.Printf("Client %s left channel %d", client.username, client.channelID)
+					
+					// Clean up empty channels
+					if len(clients) == 0 {
+						delete(h.channels, client.channelID)
+					}
+				}
 			}
 
 		case message := <-h.broadcast:
@@ -67,16 +83,41 @@ func (h *Hub) Run() {
 			var msg Message
 			if err := json.Unmarshal(message, &msg); err == nil {
 				go h.saveMessage(msg)
-			}
-			
-			for client := range h.clients {
-				select {
-				case client.send <- message:
-				default:
-					close(client.send)
-					delete(h.clients, client)
+				
+				// Broadcast to all clients (they'll filter by channel on frontend)
+				for _, clients := range h.channels {
+					for client := range clients {
+						select {
+						case client.send <- message:
+						default:
+							close(client.send)
+							delete(clients, client)
+						}
+					}
 				}
 			}
 		}
 	}
+}
+
+func (h *Hub) SwitchChannel(client *Client, newChannelID int) {
+	// Remove from current channel
+	if clients, ok := h.channels[client.channelID]; ok {
+		delete(clients, client)
+		if len(clients) == 0 {
+			delete(h.channels, client.channelID)
+		}
+	}
+	
+	// Add to new channel
+	client.channelID = newChannelID
+	if h.channels[newChannelID] == nil {
+		h.channels[newChannelID] = make(map[*Client]bool)
+	}
+	h.channels[newChannelID][client] = true
+	
+	log.Printf("Client %s switched to channel %d", client.username, newChannelID)
+	
+	// Send recent messages from new channel
+	go h.sendRecentMessages(client)
 }

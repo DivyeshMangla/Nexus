@@ -11,10 +11,10 @@ func (h *Hub) sendRecentMessages(client *Client) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Get recent messages from channel 1 (default general channel)
-	messages, err := h.db.GetRecentMessages(ctx, 1, 50)
+	// Get recent messages from client's current channel
+	messages, err := h.db.GetRecentMessages(ctx, client.channelID, 50)
 	if err != nil {
-		log.Printf("Failed to get recent messages: %v", err)
+		log.Printf("Failed to get recent messages for channel %d: %v", client.channelID, err)
 		return
 	}
 
@@ -24,6 +24,7 @@ func (h *Hub) sendRecentMessages(client *Client) {
 			Content:   msg.Content,
 			Username:  msg.Username,
 			UserID:    msg.UserID,
+			ChannelID: msg.ChannelID,
 			Timestamp: msg.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
 		}
 		
@@ -40,8 +41,13 @@ func (h *Hub) saveMessage(msg Message) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Save to channel 1 (default general channel)
-	err := h.db.SaveMessage(ctx, 1, msg.UserID, msg.Content, msg.Username)
+	// Use channel ID from message, default to 1 if not set
+	channelID := msg.ChannelID
+	if channelID == 0 {
+		channelID = 1
+	}
+	
+	err := h.db.SaveMessage(ctx, channelID, msg.UserID, msg.Content, msg.Username)
 	if err != nil {
 		log.Printf("Failed to save message: %v", err)
 	}

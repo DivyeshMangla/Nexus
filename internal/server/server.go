@@ -8,9 +8,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/divyeshmangla/nexus/config"
+	"github.com/divyeshmangla/nexus/internal/chat"
 	"github.com/divyeshmangla/nexus/internal/user"
 	"github.com/divyeshmangla/nexus/internal/websocket"
 	"github.com/divyeshmangla/nexus/pkg/database"
+	"github.com/divyeshmangla/nexus/pkg/middleware"
 )
 
 type Server struct {
@@ -67,11 +69,23 @@ func (s *Server) setupRoutes() *gin.Engine {
 	r.Static("/static", "./web/static")
 
 	userHandler := user.NewHandler(s.db, s.cfg.JWTSecret)
+	chatHandler := chat.NewHandler(s.db)
 
 	api := r.Group("/api")
 	{
 		api.POST("/signup", userHandler.Signup)
 		api.POST("/login", userHandler.Login)
+		
+		// Protected routes
+		protected := api.Group("/", middleware.AuthMiddleware(s.cfg.JWTSecret))
+		{
+			protected.GET("/users/search", chatHandler.SearchUsers)
+			protected.POST("/dms", chatHandler.CreateDM)
+			protected.GET("/dms", chatHandler.GetUserDMs)
+			protected.GET("/channels/:channelId/messages", chatHandler.GetChannelMessages)
+			protected.POST("/channels/:channelId/read", chatHandler.MarkChannelRead)
+			protected.GET("/unread", chatHandler.GetUnreadChannels)
+		}
 	}
 
 	r.GET("/", func(c *gin.Context) {
