@@ -39,6 +39,9 @@ go.sum
 ehthumbs.db
 Thumbs.db
 
+# Frontend (temporary)
+web/
+
 # Environment variables
 .env
 .env.local
@@ -69,3 +72,4 @@ tmp/
 
 # Docker
 .dockerignore
+/INTERNAL.md
