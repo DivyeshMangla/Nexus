@@ -1,9 +1,13 @@
 package websocket
 
 import (
+	"context"
+	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 	"github.com/gorilla/websocket"
+	"github.com/divyeshmangla/nexus/pkg/database"
 )
 
 type Hub struct {
@@ -11,6 +15,7 @@ type Hub struct {
 	broadcast  chan []byte
 	register   chan *Client
 	unregister chan *Client
+	db         database.Repository
 }
 
 type Client struct {
@@ -32,12 +37,13 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
-func NewHub() *Hub {
+func NewHub(db database.Repository) *Hub {
 	return &Hub{
 		clients:    make(map[*Client]bool),
 		broadcast:  make(chan []byte),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
+		db:         db,
 	}
 }
 
@@ -47,6 +53,9 @@ func (h *Hub) Run() {
 		case client := <-h.register:
 			h.clients[client] = true
 			log.Printf("Client connected: %s", client.username)
+			
+			// Send recent messages to new client
+			go h.sendRecentMessages(client)
 
 		case client := <-h.unregister:
 			if _, ok := h.clients[client]; ok {
@@ -56,6 +65,12 @@ func (h *Hub) Run() {
 			}
 
 		case message := <-h.broadcast:
+			// Save message to database
+			var msg Message
+			if err := json.Unmarshal(message, &msg); err == nil {
+				go h.saveMessage(msg)
+			}
+			
 			for client := range h.clients {
 				select {
 				case client.send <- message:

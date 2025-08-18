@@ -57,7 +57,7 @@ func (s *Server) setupDatabase() error {
 }
 
 func (s *Server) setupWebSocket() {
-	s.hub = websocket.NewHub()
+	s.hub = websocket.NewHub(s.db)
 	go s.hub.Run()
 }
 
