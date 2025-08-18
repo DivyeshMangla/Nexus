@@ -21,17 +21,15 @@ type Client struct {
 	username string
 }
 
-type Message struct {
-	Type     string `json:"type"`
-	Content  string `json:"content"`
-	Username string `json:"username"`
-	UserID   int    `json:"user_id"`
-}
+
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
-		return true
+		origin := r.Header.Get("Origin")
+		return origin == "http://localhost:8080" || origin == "https://localhost:8080"
 	},
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
 }
 
 func NewHub() *Hub {

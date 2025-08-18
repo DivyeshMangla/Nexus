@@ -1,58 +1,40 @@
 package main
 
 import (
+	"context"
 	"log"
-	"net/http"
-	
-	"github.com/gin-gonic/gin"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
 	"github.com/divyeshmangla/nexus/config"
-	"github.com/divyeshmangla/nexus/pkg/database"
-	"github.com/divyeshmangla/nexus/internal/websocket"
-	"github.com/divyeshmangla/nexus/internal/user"
+	"github.com/divyeshmangla/nexus/internal/server"
 )
 
 func main() {
 	cfg := config.Load()
-	
-	db, err := database.Connect(cfg.DBHost, cfg.DBPort, cfg.DBUser, cfg.DBPassword, cfg.DBName)
-	if err != nil {
-		log.Fatal("Failed to connect to database:", err)
+	srv := server.New(cfg)
+
+	// Graceful shutdown
+	go func() {
+		if err := srv.Start(); err != nil {
+			log.Fatal("Server failed to start:", err)
+		}
+	}()
+
+	// Wait for interrupt signal
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Println("Shutting down server...")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatal("Server forced to shutdown:", err)
 	}
-	defer db.Close()
-	
-	hub := websocket.NewHub()
-	go hub.Run()
-	
-	r := gin.Default()
-	r.LoadHTMLGlob("web/templates/*")
-	r.Static("/static", "./web/static")
-	
-	userHandler := user.NewHandler(db, cfg.JWTSecret)
-	
-	api := r.Group("/api")
-	{
-		api.POST("/signup", userHandler.Signup)
-		api.POST("/login", userHandler.Login)
-	}
-	
-	r.GET("/", func(c *gin.Context) {
-		c.Redirect(http.StatusFound, "/login")
-	})
-	
-	r.GET("/login", func(c *gin.Context) {
-		c.HTML(http.StatusOK, "login.html", nil)
-	})
-	
-	r.GET("/signup", func(c *gin.Context) {
-		c.HTML(http.StatusOK, "signup.html", nil)
-	})
-	
-	r.GET("/chat", func(c *gin.Context) {
-		c.HTML(http.StatusOK, "index.html", nil)
-	})
-	
-	r.GET("/ws", hub.HandleWebSocket(cfg.JWTSecret))
-	
-	log.Printf("Server starting on port %s", cfg.Port)
-	log.Fatal(http.ListenAndServe(":"+cfg.Port, r))
+
+	log.Println("Server exited")
 }
