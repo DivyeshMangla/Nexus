@@ -34,6 +34,7 @@ type WSMessage struct {
 	ChannelID int    `json:"channel_id,omitempty"`
 	Username  string `json:"username,omitempty"`
 	UserID    int    `json:"user_id,omitempty"`
+	Timestamp string `json:"timestamp,omitempty"`
 }
 
 // Request types

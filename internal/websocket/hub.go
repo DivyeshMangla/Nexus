@@ -1,7 +1,6 @@
 package websocket
 
 import (
-	"encoding/json"
 	"log"
 	"net/http"
 
@@ -47,6 +46,8 @@ func (h *Hub) Run() {
 		case client := <-h.register:
 			h.clients[client] = true
 			log.Printf("Client %s connected", client.username)
+			// Send recent messages for general channel on connect
+			go client.sendRecentMessages(1)
 
 		case client := <-h.unregister:
 			if _, ok := h.clients[client]; ok {

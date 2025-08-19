@@ -17,6 +17,11 @@ type Repository interface {
 	// Message operations
 	SaveMessage(ctx context.Context, channelID, userID int, content string) error
 	GetMessages(ctx context.Context, channelID int, limit int) ([]*Message, error)
+	GetLatestMessageID(ctx context.Context, channelID int) (int, error)
+
+	// DM operations
+	GetUserDMs(ctx context.Context, userID int) ([]*Channel, error)
+	UpdateUserChannelReadStatus(ctx context.Context, userID, channelID, lastReadMessageID int) error
 
 	Close() error
 }

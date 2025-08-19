@@ -2,53 +2,22 @@ package websocket
 
 import (
 	"context"
-	"encoding/json"
 	"log"
 	"time"
-	"github.com/divyeshmangla/nexus/internal/models"
+	"github.com/divyeshmangla/nexus/internal/core"
 )
 
-func (h *Hub) sendRecentMessages(client *Client) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	// Get recent messages from client's current channel
-	messages, err := h.db.GetRecentMessages(ctx, client.channelID, 50)
-	if err != nil {
-		log.Printf("Failed to get recent messages for channel %d: %v", client.channelID, err)
-		return
-	}
-
-	for _, msg := range messages {
-		wsMsg := WSMessage{
-			Type:      MessageTypeChat,
-			Content:   msg.Content,
-			Username:  msg.Username,
-			UserID:    msg.UserID,
-			ChannelID: msg.ChannelID,
-			Timestamp: msg.CreatedAt.UTC().Format(time.RFC3339),
-		}
-		
-		data, _ := json.Marshal(wsMsg)
-		select {
-		case client.send <- data:
-		default:
-			return
-		}
-	}
-}
-
-func (h *Hub) saveMessage(msg WSMessage) {
+func (h *Hub) saveMessage(msg core.WSMessage) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	// Use channel ID from message, default to general if not set
 	channelID := msg.ChannelID
 	if channelID == 0 {
-		channelID = models.GeneralChannelID
+		channelID = 1 // General channel
 	}
 	
-	err := h.db.SaveMessage(ctx, channelID, msg.UserID, msg.Content, msg.Username)
+	err := h.service.SaveMessage(ctx, channelID, msg.UserID, msg.Content)
 	if err != nil {
 		log.Printf("Failed to save message: %v", err)
 	}
