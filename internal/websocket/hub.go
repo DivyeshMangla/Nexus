@@ -4,46 +4,40 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
-	"github.com/divyeshmangla/nexus/internal/models"
-	"github.com/divyeshmangla/nexus/pkg/database"
+	"github.com/divyeshmangla/nexus/internal/core"
 )
 
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool { return true },
+}
+
 type Hub struct {
-	channels   map[int]map[*Client]bool // channelID -> clients
+	clients    map[*Client]bool
 	broadcast  chan []byte
 	register   chan *Client
 	unregister chan *Client
-	db         database.Repository
+	service    *core.Service
 }
 
 type Client struct {
-	hub       *Hub
-	conn      *websocket.Conn
-	send      chan []byte
-	userID    int
-	username  string
-	channelID int
+	hub      *Hub
+	conn     *websocket.Conn
+	send     chan []byte
+	userID   int
+	username string
 }
 
-
-
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		origin := r.Header.Get("Origin")
-		return origin == "http://localhost:8080" || origin == "https://localhost:8080"
-	},
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-}
-
-func NewHub(db database.Repository) *Hub {
+func NewHub(service *core.Service) *Hub {
 	return &Hub{
-		channels:   make(map[int]map[*Client]bool),
+		clients:    make(map[*Client]bool),
 		broadcast:  make(chan []byte),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
-		db:         db,
+		service:    service,
 	}
 }
 
@@ -51,74 +45,62 @@ func (h *Hub) Run() {
 	for {
 		select {
 		case client := <-h.register:
-			// Default to general channel
-			if client.channelID == 0 {
-				client.channelID = models.GeneralChannelID
-			}
-			
-			if h.channels[client.channelID] == nil {
-				h.channels[client.channelID] = make(map[*Client]bool)
-			}
-			h.channels[client.channelID][client] = true
-			log.Printf("Client %s joined channel %d", client.username, client.channelID)
-			
-			// Send recent messages to new client
-			go h.sendRecentMessages(client)
+			h.clients[client] = true
+			log.Printf("Client %s connected", client.username)
 
 		case client := <-h.unregister:
-			if clients, ok := h.channels[client.channelID]; ok {
-				if _, exists := clients[client]; exists {
-					delete(clients, client)
-					close(client.send)
-					log.Printf("Client %s left channel %d", client.username, client.channelID)
-					
-					// Clean up empty channels
-					if len(clients) == 0 {
-						delete(h.channels, client.channelID)
-					}
-				}
+			if _, ok := h.clients[client]; ok {
+				delete(h.clients, client)
+				close(client.send)
+				log.Printf("Client %s disconnected", client.username)
 			}
 
 		case message := <-h.broadcast:
-			// Save message to database
-			var msg Message
-			if err := json.Unmarshal(message, &msg); err == nil {
-				go h.saveMessage(msg)
-				
-				// Broadcast to all clients (they'll filter by channel on frontend)
-				for _, clients := range h.channels {
-					for client := range clients {
-						select {
-						case client.send <- message:
-						default:
-							close(client.send)
-							delete(clients, client)
-						}
-					}
+			for client := range h.clients {
+				select {
+				case client.send <- message:
+				default:
+					close(client.send)
+					delete(h.clients, client)
 				}
 			}
 		}
 	}
 }
 
-func (h *Hub) SwitchChannel(client *Client, newChannelID int) {
-	// Remove from current channel
-	if clients, ok := h.channels[client.channelID]; ok {
-		delete(clients, client)
-		if len(clients) == 0 {
-			delete(h.channels, client.channelID)
+func (h *Hub) HandleWebSocket(jwtSecret string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		token := c.Query("token")
+		if token == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token required"})
+			return
 		}
+
+		claims := jwt.MapClaims{}
+		_, err := jwt.ParseWithClaims(token, claims, func(token *jwt.Token) (interface{}, error) {
+			return []byte(jwtSecret), nil
+		})
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			return
+		}
+
+		conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
+		client := &Client{
+			hub:      h,
+			conn:     conn,
+			send:     make(chan []byte, 256),
+			userID:   int(claims["user_id"].(float64)),
+			username: claims["username"].(string),
+		}
+
+		h.register <- client
+		go client.writePump()
+		go client.readPump()
 	}
-	
-	// Add to new channel
-	client.channelID = newChannelID
-	if h.channels[newChannelID] == nil {
-		h.channels[newChannelID] = make(map[*Client]bool)
-	}
-	h.channels[newChannelID][client] = true
-	
-	log.Printf("Client %s switched to channel %d", client.username, newChannelID)
-	
-	// Send recent messages from new channel
-	go h.sendRecentMessages(client)
 }

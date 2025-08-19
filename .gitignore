@@ -73,3 +73,6 @@ tmp/
 # Docker
 .dockerignore
 /INTERNAL.md
+
+# Documentation
+CODEBASE_DOCUMENTATION.md

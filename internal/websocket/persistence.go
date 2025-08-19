@@ -20,13 +20,13 @@ func (h *Hub) sendRecentMessages(client *Client) {
 	}
 
 	for _, msg := range messages {
-		wsMsg := Message{
-			Type:      "message",
+		wsMsg := WSMessage{
+			Type:      MessageTypeChat,
 			Content:   msg.Content,
 			Username:  msg.Username,
 			UserID:    msg.UserID,
 			ChannelID: msg.ChannelID,
-			Timestamp: msg.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
+			Timestamp: msg.CreatedAt.UTC().Format(time.RFC3339),
 		}
 		
 		data, _ := json.Marshal(wsMsg)
@@ -38,7 +38,7 @@ func (h *Hub) sendRecentMessages(client *Client) {
 	}
 }
 
-func (h *Hub) saveMessage(msg Message) {
+func (h *Hub) saveMessage(msg WSMessage) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 

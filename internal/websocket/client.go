@@ -1,16 +1,19 @@
 package websocket
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"time"
+
 	"github.com/gorilla/websocket"
+	"github.com/divyeshmangla/nexus/internal/core"
 )
 
 const (
-	writeWait = 10 * time.Second
-	pongWait  = 60 * time.Second
-	pingPeriod = (pongWait * 9) / 10
+	writeWait  = 10 * time.Second
+	pongWait   = 60 * time.Second
+	pingPeriod = 54 * time.Second
 )
 
 func (c *Client) readPump() {
@@ -26,30 +29,32 @@ func (c *Client) readPump() {
 	})
 
 	for {
-		var msg Message
+		var msg core.WSMessage
 		err := c.conn.ReadJSON(&msg)
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("error: %v", err)
+				log.Printf("WebSocket error: %v", err)
 			}
 			break
 		}
 
-		if msg.Type == "switch_channel" {
-			// Handle channel switching
-			c.hub.SwitchChannel(c, msg.ChannelID)
-			continue
+		if msg.Type == "message" && msg.Content != "" {
+			// Save message to database
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			err := c.hub.service.SaveMessage(ctx, msg.ChannelID, c.userID, msg.Content)
+			cancel()
+
+			if err != nil {
+				log.Printf("Failed to save message: %v", err)
+				continue
+			}
+
+			// Broadcast message
+			msg.UserID = c.userID
+			msg.Username = c.username
+			data, _ := json.Marshal(msg)
+			c.hub.broadcast <- data
 		}
-		
-		msg.Username = c.username
-		msg.UserID = c.userID
-		msg.Timestamp = time.Now().UTC().Format("2006-01-02T15:04:05Z")
-		
-		// Use client's current channel
-		msg.ChannelID = c.channelID
-		
-		data, _ := json.Marshal(msg)
-		c.hub.broadcast <- data
 	}
 }
 
