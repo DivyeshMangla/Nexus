@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -108,9 +109,62 @@ func (h *ChatHandler) CreateDM(c *gin.Context) {
 
 	channel, err := h.service.GetOrCreateDM(ctx, userID.(int), req.UserID)
 	if err != nil {
+		log.Printf("Failed to create DM: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create DM"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"channel": channel})
+	c.JSON(http.StatusOK, gin.H{"id": channel.ID, "name": channel.Name, "type": channel.Type})
+}
+
+func (h *ChatHandler) GetDMs(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	dms, err := h.service.GetUserDMs(ctx, userID.(int))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get DMs"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"dms": dms})
+}
+
+func (h *ChatHandler) MarkChannelAsRead(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	channelID, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid channel ID"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+
+	latestMessageID, err := h.service.GetLatestMessageID(ctx, channelID)
+	if err != nil {
+		log.Printf("Failed to get latest message ID for channel %d: %v", channelID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to mark channel as read"})
+		return
+	}
+
+	err = h.service.UpdateUserChannelReadStatus(ctx, userID.(int), channelID, latestMessageID)
+	if err != nil {
+		log.Printf("Failed to update read status for user %d, channel %d: %v", userID.(int), channelID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to mark channel as read"})
+		return
+	}
+
+	c.Status(http.StatusOK)
 }

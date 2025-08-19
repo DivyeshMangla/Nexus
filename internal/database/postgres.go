@@ -66,6 +66,12 @@ func (db *DB) migrate() error {
 			user_id INTEGER NOT NULL,
 			PRIMARY KEY (channel_id, user_id)
 		)`,
+		`CREATE TABLE IF NOT EXISTS user_channel_read_status (
+			user_id INTEGER NOT NULL,
+			channel_id INTEGER NOT NULL,
+			last_read_message_id INTEGER NOT NULL,
+			PRIMARY KEY (user_id, channel_id)
+		)`,
 		`INSERT INTO channels (id, name, type) VALUES (1, 'general', 'general') ON CONFLICT DO NOTHING`,
 	}
 
@@ -141,25 +147,43 @@ func (db *DB) GetChannels(ctx context.Context) ([]*core.Channel, error) {
 }
 
 func (db *DB) GetOrCreateDM(ctx context.Context, user1ID, user2ID int) (*core.Channel, error) {
+	fmt.Printf("GetOrCreateDM called with user1ID=%d, user2ID=%d\n", user1ID, user2ID)
+	
 	// Check if DM exists
 	var channelID int
 	err := db.QueryRowContext(ctx, `
-		SELECT dp1.channel_id FROM dm_participants dp1
-		JOIN dm_participants dp2 ON dp1.channel_id = dp2.channel_id
-		WHERE dp1.user_id = $1 AND dp2.user_id = $2
+		SELECT dp.channel_id
+		FROM dm_participants dp
+		JOIN channels c ON dp.channel_id = c.id
+		WHERE dp.user_id IN ($1, $2) AND c.type = 'dm'
+		GROUP BY dp.channel_id
+		HAVING COUNT(DISTINCT dp.user_id) = 2
 	`, user1ID, user2ID).Scan(&channelID)
 
 	if err == nil {
+		fmt.Printf("Found existing DM with channelID=%d\n", channelID)
 		var channel core.Channel
 		err = db.QueryRowContext(ctx,
 			`SELECT id, name, type FROM channels WHERE id = $1`,
 			channelID).Scan(&channel.ID, &channel.Name, &channel.Type)
+		if err != nil {
+			fmt.Printf("Error getting channel details: %v\n", err)
+		}
 		return &channel, err
 	}
 
+	// Only create new DM if no rows found, otherwise return the error
+	if err != sql.ErrNoRows {
+		fmt.Printf("Unexpected error checking for existing DM: %v\n", err)
+		return nil, err
+	}
+
+	fmt.Printf("No existing DM found, creating new one\n")
+	
 	// Create new DM
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
+		fmt.Printf("Error starting transaction: %v\n", err)
 		return nil, err
 	}
 	defer tx.Rollback()
@@ -169,17 +193,30 @@ func (db *DB) GetOrCreateDM(ctx context.Context, user1ID, user2ID int) (*core.Ch
 		`INSERT INTO channels (name, type) VALUES ('dm', 'dm') RETURNING id, name, type`,
 	).Scan(&channel.ID, &channel.Name, &channel.Type)
 	if err != nil {
+		fmt.Printf("Error creating channel: %v\n", err)
 		return nil, err
 	}
+
+	fmt.Printf("Created channel with ID=%d\n", channel.ID)
 
 	_, err = tx.ExecContext(ctx,
 		`INSERT INTO dm_participants (channel_id, user_id) VALUES ($1, $2), ($1, $3)`,
 		channel.ID, user1ID, user2ID)
 	if err != nil {
+		fmt.Printf("Error inserting participants: %v\n", err)
 		return nil, err
 	}
 
-	return &channel, tx.Commit()
+	fmt.Printf("Inserted participants successfully\n")
+
+	err = tx.Commit()
+	if err != nil {
+		fmt.Printf("Error committing transaction: %v\n", err)
+		return nil, err
+	}
+
+	fmt.Printf("Transaction committed successfully\n")
+	return &channel, nil
 }
 
 // Message operations
@@ -219,4 +256,60 @@ func (db *DB) GetMessages(ctx context.Context, channelID int, limit int) ([]*cor
 	}
 
 	return messages, nil
+}
+
+func (db *DB) GetUserDMs(ctx context.Context, userID int) ([]*core.Channel, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT DISTINCT c.id, c.name, c.type, u.username
+		FROM channels c
+		JOIN dm_participants dp1 ON c.id = dp1.channel_id
+		JOIN dm_participants dp2 ON c.id = dp2.channel_id
+		JOIN users u ON dp2.user_id = u.id
+		WHERE c.type = 'dm' AND dp1.user_id = $1 AND dp2.user_id != $1
+		ORDER BY c.id DESC
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var dms []*core.Channel
+	for rows.Next() {
+		var dm core.Channel
+		var username string
+		if err := rows.Scan(&dm.ID, &dm.Name, &dm.Type, &username); err != nil {
+			return nil, err
+		}
+		// Use the other user's name as DM name
+		dm.Name = username
+		dms = append(dms, &dm)
+	}
+	return dms, nil
+}
+
+func (db *DB) UpdateUserChannelReadStatus(ctx context.Context, userID, channelID, lastReadMessageID int) error {
+	_, err := db.ExecContext(ctx, `
+		INSERT INTO user_channel_read_status (user_id, channel_id, last_read_message_id)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (user_id, channel_id) DO UPDATE SET last_read_message_id = $3
+	`, userID, channelID, lastReadMessageID)
+	return err
+}
+
+func (db *DB) GetLatestMessageID(ctx context.Context, channelID int) (int, error) {
+	var messageID int
+	err := db.QueryRowContext(ctx, `
+		SELECT id FROM messages
+		WHERE channel_id = $1
+		ORDER BY created_at DESC
+		LIMIT 1
+	`, channelID).Scan(&messageID)
+	if err == sql.ErrNoRows {
+		return 0, nil // No messages in channel, return 0 or handle as appropriate
+	}
+	return messageID, err
+}
+
+func (db *DB) Close() error {
+	return db.DB.Close()
 }

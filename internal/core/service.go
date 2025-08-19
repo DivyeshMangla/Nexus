@@ -80,3 +80,15 @@ func (s *Service) GetMessages(ctx context.Context, channelID int) ([]*Message, e
 func (s *Service) SearchUsers(ctx context.Context, query string) ([]*User, error) {
 	return s.repo.SearchUsers(ctx, query)
 }
+
+func (s *Service) GetUserDMs(ctx context.Context, userID int) ([]*Channel, error) {
+	return s.repo.GetUserDMs(ctx, userID)
+}
+
+func (s *Service) UpdateUserChannelReadStatus(ctx context.Context, userID, channelID, lastReadMessageID int) error {
+	return s.repo.UpdateUserChannelReadStatus(ctx, userID, channelID, lastReadMessageID)
+}
+
+func (s *Service) GetLatestMessageID(ctx context.Context, channelID int) (int, error) {
+	return s.repo.GetLatestMessageID(ctx, channelID)
+}

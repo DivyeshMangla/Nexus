@@ -39,9 +39,15 @@ func (c *Client) readPump() {
 		}
 
 		if msg.Type == "message" && msg.Content != "" {
+			// Use channel ID from message, default to general if not set
+			channelID := msg.ChannelID
+			if channelID == 0 {
+				channelID = 1 // General channel
+			}
+
 			// Save message to database
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			err := c.hub.service.SaveMessage(ctx, msg.ChannelID, c.userID, msg.Content)
+			err := c.hub.service.SaveMessage(ctx, channelID, c.userID, msg.Content)
 			cancel()
 
 			if err != nil {
@@ -49,11 +55,45 @@ func (c *Client) readPump() {
 				continue
 			}
 
-			// Broadcast message
+			// Broadcast message with timestamp
 			msg.UserID = c.userID
 			msg.Username = c.username
+			msg.ChannelID = channelID
+			msg.Timestamp = time.Now().UTC().Format(time.RFC3339)
 			data, _ := json.Marshal(msg)
 			c.hub.broadcast <- data
+		} else if msg.Type == "switch_channel" {
+			// Send recent messages for the channel
+			c.sendRecentMessages(msg.ChannelID)
+		}
+	}
+}
+
+func (c *Client) sendRecentMessages(channelID int) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	messages, err := c.hub.service.GetMessages(ctx, channelID)
+	if err != nil {
+		log.Printf("Failed to get recent messages: %v", err)
+		return
+	}
+
+	for _, msg := range messages {
+		wsMsg := core.WSMessage{
+			Type:      "message",
+			Content:   msg.Content,
+			Username:  msg.Username,
+			UserID:    msg.UserID,
+			ChannelID: msg.ChannelID,
+			Timestamp: msg.CreatedAt.UTC().Format(time.RFC3339),
+		}
+
+		data, _ := json.Marshal(wsMsg)
+		select {
+		case c.send <- data:
+		default:
+			return
 		}
 	}
 }

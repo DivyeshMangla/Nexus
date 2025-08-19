@@ -56,7 +56,9 @@ func main() {
 			protected.POST("/channels", chatHandler.CreateChannel)
 			protected.GET("/channels/:id/messages", chatHandler.GetMessages)
 			protected.GET("/users/search", chatHandler.SearchUsers)
+			protected.GET("/dms", chatHandler.GetDMs)
 			protected.POST("/dms", chatHandler.CreateDM)
+			protected.POST("/channels/:id/read", chatHandler.MarkChannelAsRead)
 		}
 	}
 
