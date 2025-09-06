@@ -9,13 +9,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/divyeshmangla/nexus/config"
 	"github.com/divyeshmangla/nexus/internal/core"
 	"github.com/divyeshmangla/nexus/internal/database"
 	"github.com/divyeshmangla/nexus/internal/handlers"
 	"github.com/divyeshmangla/nexus/internal/middleware"
 	"github.com/divyeshmangla/nexus/internal/websocket"
+	"github.com/gin-gonic/gin"
 )
 
 func main() {
@@ -28,15 +28,17 @@ func main() {
 	}
 	defer db.Close()
 
-	// Setup service
-	service := core.NewService(db, cfg.JWTSecret)
+	// Setup services
+	authSvc := core.NewAuthService(db, cfg.JWTSecret)
+	channelSvc := core.NewChannelService(db)
+	messageSvc := core.NewMessageService(db)
 
 	// Setup handlers
-	authHandler := handlers.NewAuthHandler(service)
-	chatHandler := handlers.NewChatHandler(service)
+	authHandler := handlers.NewAuthHandler(authSvc)
+	chatHandler := handlers.NewChatHandler(authSvc, channelSvc, messageSvc)
 
 	// Setup WebSocket hub
-	hub := websocket.NewHub(service)
+	hub := websocket.NewHub(messageSvc, channelSvc)
 	go hub.Run()
 
 	// Setup router

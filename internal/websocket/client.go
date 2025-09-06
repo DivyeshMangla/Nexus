@@ -6,8 +6,8 @@ import (
 	"log"
 	"time"
 
+	"github.com/divyeshmangla/nexus/internal/handlers"
 	"github.com/gorilla/websocket"
-	"github.com/divyeshmangla/nexus/internal/core"
 )
 
 const (
@@ -29,7 +29,7 @@ func (c *Client) readPump() {
 	})
 
 	for {
-		var msg core.WSMessage
+		var msg handlers.WSMessage
 		err := c.conn.ReadJSON(&msg)
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
@@ -47,7 +47,7 @@ func (c *Client) readPump() {
 
 			// Save message to database
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			err := c.hub.service.SaveMessage(ctx, channelID, c.userID, msg.Content)
+			err := c.hub.messageService.SaveMessage(ctx, channelID, c.userID, msg.Content)
 			cancel()
 
 			if err != nil {
@@ -73,14 +73,14 @@ func (c *Client) sendRecentMessages(channelID int) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	messages, err := c.hub.service.GetMessages(ctx, channelID)
+	messages, err := c.hub.messageService.GetMessages(ctx, channelID)
 	if err != nil {
 		log.Printf("Failed to get recent messages: %v", err)
 		return
 	}
 
 	for _, msg := range messages {
-		wsMsg := core.WSMessage{
+		wsMsg := handlers.WSMessage{
 			Type:      "message",
 			Content:   msg.Content,
 			Username:  msg.Username,

@@ -7,23 +7,29 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/divyeshmangla/nexus/internal/core"
+	"github.com/gin-gonic/gin"
 )
 
 type ChatHandler struct {
-	service *core.Service
+	authService    *core.AuthService
+	channelService *core.ChannelService
+	messageService *core.MessageService
 }
 
-func NewChatHandler(service *core.Service) *ChatHandler {
-	return &ChatHandler{service: service}
+func NewChatHandler(authSvc *core.AuthService, channelSvc *core.ChannelService, messageSvc *core.MessageService) *ChatHandler {
+	return &ChatHandler{
+		authService:    authSvc,
+		channelService: channelSvc,
+		messageService: messageSvc,
+	}
 }
 
 func (h *ChatHandler) GetChannels(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
-	channels, err := h.service.GetChannels(ctx)
+	channels, err := h.channelService.GetChannels(ctx)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get channels"})
 		return
@@ -33,7 +39,7 @@ func (h *ChatHandler) GetChannels(c *gin.Context) {
 }
 
 func (h *ChatHandler) CreateChannel(c *gin.Context) {
-	var req core.CreateChannelRequest
+	var req CreateChannelRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
@@ -42,7 +48,7 @@ func (h *ChatHandler) CreateChannel(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
-	channel, err := h.service.CreateChannel(ctx, req)
+	channel, err := h.channelService.CreateChannel(ctx, req.Name, req.Type)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create channel"})
 		return
@@ -61,7 +67,7 @@ func (h *ChatHandler) GetMessages(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
-	messages, err := h.service.GetMessages(ctx, channelID)
+	messages, err := h.messageService.GetMessages(ctx, channelID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get messages"})
 		return
@@ -80,7 +86,7 @@ func (h *ChatHandler) SearchUsers(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
-	users, err := h.service.SearchUsers(ctx, query)
+	users, err := h.authService.SearchUsers(ctx, query)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Search failed"})
 		return
@@ -107,7 +113,7 @@ func (h *ChatHandler) CreateDM(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
-	channel, err := h.service.GetOrCreateDM(ctx, userID.(int), req.UserID)
+	channel, err := h.channelService.GetOrCreateDM(ctx, userID.(int), req.UserID)
 	if err != nil {
 		log.Printf("Failed to create DM: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create DM"})
@@ -127,7 +133,7 @@ func (h *ChatHandler) GetDMs(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
-	dms, err := h.service.GetUserDMs(ctx, userID.(int))
+	dms, err := h.channelService.GetUserDMs(ctx, userID.(int))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get DMs"})
 		return
@@ -152,14 +158,14 @@ func (h *ChatHandler) MarkChannelAsRead(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
 
-	latestMessageID, err := h.service.GetLatestMessageID(ctx, channelID)
+	latestMessageID, err := h.messageService.GetLatestMessageID(ctx, channelID)
 	if err != nil {
 		log.Printf("Failed to get latest message ID for channel %d: %v", channelID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to mark channel as read"})
 		return
 	}
 
-	err = h.service.UpdateUserChannelReadStatus(ctx, userID.(int), channelID, latestMessageID)
+	err = h.channelService.UpdateUserChannelReadStatus(ctx, userID.(int), channelID, latestMessageID)
 	if err != nil {
 		log.Printf("Failed to update read status for user %d, channel %d: %v", userID.(int), channelID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to mark channel as read"})
