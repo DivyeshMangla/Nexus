@@ -4,10 +4,10 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/divyeshmangla/nexus/internal/core"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
-	"github.com/divyeshmangla/nexus/internal/core"
 )
 
 var upgrader = websocket.Upgrader{
@@ -15,11 +15,12 @@ var upgrader = websocket.Upgrader{
 }
 
 type Hub struct {
-	clients    map[*Client]bool
-	broadcast  chan []byte
-	register   chan *Client
-	unregister chan *Client
-	service    *core.Service
+	clients        map[*Client]bool
+	broadcast      chan []byte
+	register       chan *Client
+	unregister     chan *Client
+	messageService *core.MessageService
+	channelService *core.ChannelService
 }
 
 type Client struct {
@@ -30,13 +31,14 @@ type Client struct {
 	username string
 }
 
-func NewHub(service *core.Service) *Hub {
+func NewHub(messageSvc *core.MessageService, channelSvc *core.ChannelService) *Hub {
 	return &Hub{
-		clients:    make(map[*Client]bool),
-		broadcast:  make(chan []byte),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
-		service:    service,
+		clients:        make(map[*Client]bool),
+		broadcast:      make(chan []byte),
+		register:       make(chan *Client),
+		unregister:     make(chan *Client),
+		messageService: messageSvc,
+		channelService: channelSvc,
 	}
 }
 
